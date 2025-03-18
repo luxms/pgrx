@@ -83,6 +83,9 @@ pub(crate) struct Init {
     jobs: Option<usize>,
     #[clap(skip)]
     jobserver: OnceLock<jobslot::Client>,
+
+    #[clap(long, help = "Skip Postgres version check")]
+    skip_version_check: bool,
 }
 
 impl CommandExecute for Init {
@@ -145,7 +148,7 @@ impl CommandExecute for Init {
                     let config = PgConfig::new_with_defaults(pg_config_path.as_str().into());
                     let label = config.label().ok();
                     // We allow None in case it's configured via the environment or something.
-                    if label.is_some() && label.as_deref() != Some(pgver) {
+                    if label.is_some_and(|v| v != pgver) && !self.skip_version_check {
                         return Err(eyre!(
                             "wrong `pg_config` given to `--{pgver}` `{pg_config_path:?}` is for PostgreSQL {}",
                             config.major_version()?,

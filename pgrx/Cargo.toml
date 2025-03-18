@@ -76,6 +76,9 @@ serde_json.workspace = true # everything JSON
 [build-dependencies]
 pgrx-pg-sys.workspace = true
 
+[lints.rust]
+unexpected_cfgs = "allow"
+
 [lints]
 clippy.cast_ptr_alignment = "allow"
 clippy.len_without_is_empty = "allow"
