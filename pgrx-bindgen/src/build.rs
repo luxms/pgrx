@@ -176,7 +176,7 @@ pub fn main() -> eyre::Result<()> {
         // This does not cross-check config.toml and Cargo.toml versions, as it is release infra.
         Pgrx::from_config()?.iter(PgConfigSelector::All)
             .map(|r| r.expect("invalid pg_config"))
-            .map(|c| (c.major_version().expect("invalid major version"), c))
+            .map(|c| (c.overrided_major_version().unwrap_or_else(|| c.major_version().expect("invalid major version")), c))
             .filter_map(|t| {
                 if is_supported_major_version(t.0) {
                     Some(t)
@@ -233,13 +233,14 @@ pub fn main() -> eyre::Result<()> {
             vec![(major_version, pg_config)]
         } else {
             let specific = Pgrx::from_config()?.get(&format!("pg{}", found_ver.major))?;
-            vec![(found_ver.major, specific)]
+            vec![(specific.overrided_major_version().unwrap_or(found_ver.major), specific)]
         }
     };
 
     // make sure we're not trying to build any of the yanked postgres versions
-    for (_, pg_config) in &pg_configs {
-        let version = pg_config.get_version()?;
+    for (v, pg_config) in &pg_configs {
+        let mut version = pg_config.get_version()?;
+        version.major = *v;
         if YANKED_POSTGRES_VERSIONS.contains(&version) {
             panic!("Postgres v{}{} is incompatible with \
                     other versions in this major series and is not supported by pgrx.  Please upgrade \

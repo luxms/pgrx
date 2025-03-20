@@ -116,6 +116,7 @@ impl Display for PgVersion {
 
 #[derive(Clone, Debug)]
 pub struct PgConfig {
+    overidded_major_version: Option<u16>,
     version: Option<PgVersion>,
     pg_config: Option<PathBuf>,
     known_props: Option<BTreeMap<String, String>>,
@@ -132,6 +133,7 @@ impl Display for PgConfig {
 impl Default for PgConfig {
     fn default() -> Self {
         PgConfig {
+            overidded_major_version: None,
             version: None,
             pg_config: None,
             known_props: None,
@@ -150,6 +152,7 @@ impl From<PgVersion> for PgConfig {
 impl PgConfig {
     pub fn new(pg_config: PathBuf, base_port: u16, base_testing_port: u16) -> Self {
         PgConfig {
+            overidded_major_version: None,
             version: None,
             pg_config: Some(pg_config),
             known_props: None,
@@ -160,6 +163,7 @@ impl PgConfig {
 
     pub fn new_with_defaults(pg_config: PathBuf) -> Self {
         PgConfig {
+            overidded_major_version: None,
             version: None,
             pg_config: Some(pg_config),
             known_props: None,
@@ -193,6 +197,7 @@ impl PgConfig {
             }
 
             Ok(Self {
+                overidded_major_version: None,
                 version: None,
                 pg_config: None,
                 known_props: Some(known_props),
@@ -272,6 +277,14 @@ impl PgConfig {
             PgMinorVersion::Release(minor)
         };
         Ok((major, minor))
+    }
+
+    pub fn override_major_version(&mut self, version: u16) {
+        self.overidded_major_version = Some(version);
+    }
+
+    pub fn overrided_major_version(&self) -> Option<u16> {
+        self.overidded_major_version
     }
 
     pub fn get_version(&self) -> eyre::Result<PgVersion> {
@@ -497,11 +510,17 @@ impl Default for Pgrx {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ConfigToml {
-    pub configs: HashMap<String, PathBuf>,
+    pub configs: HashMap<String, PgConfigToml>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_testing_port: Option<u16>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct PgConfigToml {
+    pub version: u16,
+    pub path: PathBuf,
 }
 
 pub enum PgConfigSelector<'a> {
@@ -577,7 +596,12 @@ impl Pgrx {
                         );
 
                         for (_, v) in configs.configs {
-                            pgrx.push(PgConfig::new(v, pgrx.base_port, pgrx.base_testing_port));
+                            let mut pg_config =
+                                PgConfig::new(v.path, pgrx.base_port, pgrx.base_testing_port);
+
+                            pg_config.override_major_version(v.version);
+
+                            pgrx.push(pg_config);
                         }
                         Ok(pgrx)
                     }

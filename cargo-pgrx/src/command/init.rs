@@ -609,9 +609,14 @@ fn write_config(pg_configs: &Vec<PgConfig>, init: &Init) -> eyre::Result<()> {
     config.base_port = init.base_port;
     config.base_testing_port = init.base_testing_port;
     for pg_config in pg_configs {
-        config
-            .configs
-            .insert(pg_config.label()?, pg_config.path().ok_or(eyre!("no path for pg_config"))?);
+        let path = pg_config.path().ok_or(eyre!("no path for pg_config"))?;
+        let version = if let Some(version) = pg_config.overrided_major_version() {
+            version
+        } else {
+            pg_config.major_version()?
+        };
+
+        config.configs.insert(pg_config.label()?, pgrx_pg_config::PgConfigToml { version, path });
     }
 
     let mut file = File::create(&config_path)?;
