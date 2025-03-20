@@ -219,7 +219,7 @@ impl PgConfig {
     }
 
     pub fn label(&self) -> eyre::Result<String> {
-        Ok(format!("pg{}", self.overrided_major_version().unwrap_or(self.major_version()?)))
+        Ok(format!("pg{}", self.major_version()?))
     }
 
     pub fn path(&self) -> Option<PathBuf> {
