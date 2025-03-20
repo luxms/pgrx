@@ -105,24 +105,31 @@ impl CommandExecute for Init {
             .unwrap();
 
         let mut versions = HashMap::new();
+        let mut major_versions = HashMap::new();
 
         if let Some(ref version) = self.pg12 {
             versions.insert("pg12", version.clone());
+            major_versions.insert("pg12", 12);
         }
         if let Some(ref version) = self.pg13 {
             versions.insert("pg13", version.clone());
+            major_versions.insert("pg13", 13);
         }
         if let Some(ref version) = self.pg14 {
             versions.insert("pg14", version.clone());
+            major_versions.insert("pg14", 14);
         }
         if let Some(ref version) = self.pg15 {
             versions.insert("pg15", version.clone());
+            major_versions.insert("pg15", 15);
         }
         if let Some(ref version) = self.pg16 {
             versions.insert("pg16", version.clone());
+            major_versions.insert("pg16", 16);
         }
         if let Some(ref version) = self.pg17 {
             versions.insert("pg17", version.clone());
+            major_versions.insert("pg17", 17);
         }
 
         if versions.is_empty() {
@@ -134,7 +141,7 @@ impl CommandExecute for Init {
             let mut pgrx = Pgrx::default();
 
             for (pgver, pg_config_path) in versions {
-                let config = if pg_config_path == "download" {
+                let mut config = if pg_config_path == "download" {
                     if default_pgrx.is_none() {
                         default_pgrx = Some(pgrx_default()?);
                     }
@@ -156,6 +163,11 @@ impl CommandExecute for Init {
                     }
                     config
                 };
+
+                config.override_major_version(
+                    *major_versions.get(pgver).expect("failed to get major version"),
+                );
+
                 pgrx.push(config);
             }
 
@@ -616,7 +628,10 @@ fn write_config(pg_configs: &Vec<PgConfig>, init: &Init) -> eyre::Result<()> {
             pg_config.major_version()?
         };
 
-        config.configs.insert(pg_config.label()?, pgrx_pg_config::PgConfigToml { version, path });
+        config.configs.insert(
+            pg_config.label()?,
+            pgrx_pg_config::PgConfigToml { overrided_version: version, path },
+        );
     }
 
     let mut file = File::create(&config_path)?;
