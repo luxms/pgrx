@@ -219,7 +219,7 @@ impl PgConfig {
     }
 
     pub fn label(&self) -> eyre::Result<String> {
-        Ok(format!("pg{}", self.major_version()?))
+        Ok(format!("pg{}", self.overrided_major_version().unwrap_or(self.major_version()?)))
     }
 
     pub fn path(&self) -> Option<PathBuf> {
@@ -519,7 +519,7 @@ pub struct ConfigToml {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct PgConfigToml {
-    pub version: u16,
+    pub overrided_version: u16,
     pub path: PathBuf,
 }
 
@@ -599,7 +599,7 @@ impl Pgrx {
                             let mut pg_config =
                                 PgConfig::new(v.path, pgrx.base_port, pgrx.base_testing_port);
 
-                            pg_config.override_major_version(v.version);
+                            pg_config.override_major_version(v.overrided_version);
 
                             pgrx.push(pg_config);
                         }
