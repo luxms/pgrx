@@ -294,6 +294,10 @@ impl PgConfig {
     }
 
     pub fn major_version(&self) -> eyre::Result<u16> {
+        if let Some(overrided_version) = self.overidded_major_version {
+            return Ok(overrided_version);
+        }
+
         match &self.version {
             Some(version) => Ok(version.major),
             None => Ok(self.get_version()?.major),

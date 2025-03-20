@@ -12,7 +12,7 @@ use crate::manifest::{display_version_info, PgVersionSource};
 use crate::CommandExecute;
 use crate::{command::get::get_property, profile::CargoProfile};
 use cargo_toml::Manifest;
-use eyre::{eyre, WrapErr};
+use eyre::{eyre, Ok, WrapErr};
 use pgrx_pg_config::{get_target_dir, PgConfig, Pgrx};
 use std::path::{Path, PathBuf};
 
@@ -58,11 +58,20 @@ impl Package {
         let package_manifest =
             Manifest::from_path(&package_manifest_path).wrap_err("Couldn't parse manifest")?;
 
-        let pg_config = match self.pg_config {
-            None => PgConfig::from_path(),
-            Some(config) => PgConfig::new_with_defaults(config),
+        let pgrx = Pgrx::from_config()?;
+
+        let pg_config = pgrx
+            .iter(pgrx_pg_config::PgConfigSelector::All)
+            .find(|c| c.as_ref().is_ok_and(|c| c.path().eq(&self.pg_config)))
+            .unwrap_or(Ok(PgConfig::from_path()))?;
+
+        let version = if let Some(overrided_version) = pg_config.overrided_major_version() {
+            overrided_version
+        } else {
+            pg_config.major_version()?
         };
-        let pg_version = format!("pg{}", pg_config.major_version()?);
+
+        let pg_version = format!("pg{version}");
 
         crate::manifest::modify_features_for_version(
             &Pgrx::from_config()?,
