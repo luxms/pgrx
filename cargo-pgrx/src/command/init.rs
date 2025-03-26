@@ -14,7 +14,7 @@ use bzip2::bufread::BzDecoder;
 use eyre::{eyre, WrapErr};
 use owo_colors::OwoColorize;
 use pgrx_pg_config::{
-    get_c_locale_flags, ConfigToml, PgConfig, PgConfigSelector, Pgrx, PgrxHomeError,
+    get_c_locale_flags, ConfigEntry, ConfigToml, PgConfig, PgConfigSelector, Pgrx, PgrxHomeError,
 };
 use tar::Archive;
 
@@ -630,7 +630,7 @@ fn write_config(pg_configs: &Vec<PgConfig>, init: &Init) -> eyre::Result<()> {
 
         config.configs.insert(
             pg_config.label()?,
-            pgrx_pg_config::PgConfigToml { overrided_version: version, path },
+            ConfigEntry::New(pgrx_pg_config::PgConfigToml { overrided_version: version, path }),
         );
     }
 

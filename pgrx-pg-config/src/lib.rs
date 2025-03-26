@@ -514,11 +514,18 @@ impl Default for Pgrx {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ConfigToml {
-    pub configs: HashMap<String, PgConfigToml>,
+    pub configs: HashMap<String, ConfigEntry>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_testing_port: Option<u16>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ConfigEntry {
+    Old(std::path::PathBuf),
+    New(PgConfigToml),
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -600,10 +607,20 @@ impl Pgrx {
                         );
 
                         for (_, v) in configs.configs {
-                            let mut pg_config =
-                                PgConfig::new(v.path, pgrx.base_port, pgrx.base_testing_port);
-
-                            pg_config.override_major_version(v.overrided_version);
+                            let pg_config = match v {
+                                ConfigEntry::Old(path) => {
+                                    PgConfig::new(path, pgrx.base_port, pgrx.base_testing_port)
+                                }
+                                ConfigEntry::New(toml) => {
+                                    let mut pg_config = PgConfig::new(
+                                        toml.path,
+                                        pgrx.base_port,
+                                        pgrx.base_testing_port,
+                                    );
+                                    pg_config.override_major_version(toml.overrided_version);
+                                    pg_config
+                                }
+                            };
 
                             pgrx.push(pg_config);
                         }
