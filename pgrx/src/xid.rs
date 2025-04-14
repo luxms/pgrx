@@ -12,7 +12,7 @@ use crate::pg_sys;
 #[cfg(all(feature = "xid8", feature = "unsafe-postgres"))]
 #[inline]
 pub fn xid_to_64bit(xid: pg_sys::TransactionId) -> u64 {
-    xid
+    xid.into_inner()
 }
 
 #[cfg(not(feature = "xid8"))]
