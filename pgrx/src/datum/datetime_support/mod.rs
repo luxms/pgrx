@@ -193,7 +193,7 @@ pub trait HasExtractableParts: Clone + IntoDatum + seal::DateTimeType {
     fn extract_part(&self, field: DateTimeParts) -> Option<AnyNumeric> {
         unsafe {
             let field_datum = field.into_datum();
-            #[cfg(any(feature = "pg12", feature = "pg13"))]
+            #[cfg(feature = "pg13")]
             let field_value: Option<f64> = direct_function_call(
                 Self::EXTRACT_FUNCTION,
                 &[field_datum, self.clone().into_datum()],
@@ -205,7 +205,15 @@ pub trait HasExtractableParts: Clone + IntoDatum + seal::DateTimeType {
             );
             // don't leak the TEXT datum we made
             pg_sys::pfree(field_datum.unwrap().cast_mut_ptr());
-            field_value.map(|v| v.try_into().unwrap())
+
+            #[cfg(feature = "pg13")]
+            {
+                field_value.map(|v| AnyNumeric::from_str(&format!("{v}")).unwrap())
+            }
+            #[cfg(not(feature = "pg13"))]
+            {
+                field_value
+            }
         }
     }
 }
@@ -223,19 +231,6 @@ pub trait ToIsoString: IntoDatum + Sized + Display + seal::DateTimeType {
             self.to_string()
         } else {
             unsafe {
-                #[cfg(feature = "pg12")]
-                let jsonb = pg_sys::JsonEncodeDateTime(
-                    std::ptr::null_mut(),
-                    self.into_datum().unwrap(),
-                    Self::type_oid(),
-                );
-                #[cfg(any(
-                    feature = "pg13",
-                    feature = "pg14",
-                    feature = "pg15",
-                    feature = "pg16",
-                    feature = "pg17"
-                ))]
                 let jsonb = pg_sys::JsonEncodeDateTime(
                     std::ptr::null_mut(),
                     self.into_datum().unwrap(),
@@ -395,12 +390,11 @@ macro_rules! impl_wrappers {
     };
 }
 
-#[cfg(any(feature = "pg12", feature = "pg13"))]
-const DATE_EXTRACT: unsafe fn(fcinfo: pg_sys::FunctionCallInfo) -> pg_sys::Datum =
-    pg12_13::date_part;
+#[cfg(feature = "pg13")]
+const DATE_EXTRACT: unsafe fn(fcinfo: pg_sys::FunctionCallInfo) -> pg_sys::Datum = pg13::date_part;
 
-#[cfg(any(feature = "pg12", feature = "pg13"))]
-mod pg12_13 {
+#[cfg(feature = "pg13")]
+mod pg13 {
     use crate::prelude::*;
 
     pub(super) unsafe fn date_part(fcinfo: pg_sys::FunctionCallInfo) -> pg_sys::Datum {
@@ -408,7 +402,7 @@ mod pg12_13 {
         // then call the `timestamp_part` function.
         //
         // this is essentially how the `date_part()` function is declared in the system catalogs
-        // for pg12-13:
+        // for pg13:
         /**
             \sf date_part(text, date)
             CREATE OR REPLACE FUNCTION pg_catalog.date_part(text, date)
@@ -439,7 +433,7 @@ impl_wrappers!(
     pg_sys::date_out
 );
 
-#[cfg(any(feature = "pg12", feature = "pg13"))]
+#[cfg(feature = "pg13")]
 const TIME_EXTRACT: unsafe fn(fcinfo: pg_sys::FunctionCallInfo) -> pg_sys::Datum =
     pg_sys::time_part;
 #[cfg(any(feature = "pg14", feature = "pg15", feature = "pg16", feature = "pg17"))]
@@ -456,7 +450,7 @@ impl_wrappers!(
     pg_sys::time_out
 );
 
-#[cfg(any(feature = "pg12", feature = "pg13"))]
+#[cfg(feature = "pg13")]
 const TIMETZ_EXTRACT: unsafe fn(fcinfo: pg_sys::FunctionCallInfo) -> pg_sys::Datum =
     pg_sys::timetz_part;
 #[cfg(any(feature = "pg14", feature = "pg15", feature = "pg16", feature = "pg17"))]
@@ -473,7 +467,7 @@ impl_wrappers!(
     pg_sys::timetz_out
 );
 
-#[cfg(any(feature = "pg12", feature = "pg13"))]
+#[cfg(feature = "pg13")]
 const TIMESTAMP_EXTRACT: unsafe fn(fcinfo: pg_sys::FunctionCallInfo) -> pg_sys::Datum =
     pg_sys::timestamp_part;
 #[cfg(any(feature = "pg14", feature = "pg15", feature = "pg16", feature = "pg17"))]
@@ -490,7 +484,7 @@ impl_wrappers!(
     pg_sys::timestamp_out
 );
 
-#[cfg(any(feature = "pg12", feature = "pg13"))]
+#[cfg(feature = "pg13")]
 const TIMESTAMPTZ_EXTRACT: unsafe fn(fcinfo: pg_sys::FunctionCallInfo) -> pg_sys::Datum =
     pg_sys::timestamptz_part;
 #[cfg(any(feature = "pg14", feature = "pg15", feature = "pg16", feature = "pg17"))]
@@ -507,7 +501,7 @@ impl_wrappers!(
     pg_sys::timestamptz_out
 );
 
-#[cfg(any(feature = "pg12", feature = "pg13"))]
+#[cfg(feature = "pg13")]
 const INTERVAL_EXTRACT: unsafe fn(fcinfo: pg_sys::FunctionCallInfo) -> pg_sys::Datum =
     pg_sys::interval_part;
 #[cfg(any(feature = "pg14", feature = "pg15", feature = "pg16", feature = "pg17"))]
@@ -531,9 +525,7 @@ impl_wrappers!(
 /// if the `zone` is "CEST", which is GMT+2, then the result is `7200`.
 ///
 /// ## Errors
-///
 /// Returns a [`DateTimeConversionError`] if the specified timezone is unknown to Postgres
-
 #[cfg(any(feature = "pg16", feature = "pg17"))]
 pub fn get_timezone_offset<Tz: AsRef<str>>(zone: Tz) -> Result<i32, DateTimeConversionError> {
     let zone = zone.as_ref();
@@ -576,7 +568,7 @@ pub fn get_timezone_offset<Tz: AsRef<str>>(zone: Tz) -> Result<i32, DateTimeConv
     .execute()
 }
 
-#[cfg(any(feature = "pg12", feature = "pg13", feature = "pg14", feature = "pg15"))]
+#[cfg(any(feature = "pg13", feature = "pg14", feature = "pg15"))]
 pub fn get_timezone_offset<Tz: AsRef<str>>(zone: Tz) -> Result<i32, DateTimeConversionError> {
     /*
      * Look up the requested time zone.  First we look in the time zone
@@ -597,24 +589,7 @@ pub fn get_timezone_offset<Tz: AsRef<str>>(zone: Tz) -> Result<i32, DateTimeConv
         let lowzone =
             pg_sys::downcase_truncate_identifier(tzname.as_ptr(), zone.as_ref().len() as _, false);
 
-        let tztype = {
-            #[cfg(any(feature = "pg12", feature = "pg13", feature = "pg14", feature = "pg15"))]
-            {
-                pg_sys::DecodeTimezoneAbbrev(0, lowzone, &mut val, &mut tzp) as u32
-            }
-            #[cfg(any(feature = "pg16", feature = "pg17"))]
-            {
-                let mut ftype = 0;
-                pg_sys::DecodeTimezoneAbbrev(
-                    0,
-                    lowzone,
-                    &mut ftype,
-                    &mut val,
-                    &mut tzp,
-                    std::ptr::null_mut(),
-                ) as u32
-            }
-        };
+        let tztype = pg_sys::DecodeTimezoneAbbrev(0, lowzone, &mut val, &mut tzp) as u32;
 
         pg_sys::pfree(lowzone.cast());
 

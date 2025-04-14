@@ -43,6 +43,8 @@ pub(crate) struct Package {
     pub(crate) out_dir: Option<PathBuf>,
     #[clap(flatten)]
     pub(crate) features: clap_cargo::Features,
+    #[clap(long)]
+    pub(crate) target: Option<String>,
     #[clap(from_global, action = ArgAction::Count)]
     pub(crate) verbose: u8,
 }
@@ -88,7 +90,12 @@ impl Package {
         let out_dir = if let Some(out_dir) = self.out_dir {
             out_dir
         } else {
-            build_base_path(&pg_config, &package_manifest_path, &profile)?
+            build_base_path(
+                &pg_config,
+                &package_manifest_path,
+                &profile,
+                self.target.as_ref().map(|x| x.as_str()),
+            )?
         };
 
         let output_files = package_extension(
@@ -100,6 +107,7 @@ impl Package {
             &profile,
             self.test,
             &self.features,
+            self.target.as_ref().map(|x| x.as_str()),
         )?;
 
         Ok((out_dir, output_files))
@@ -122,12 +130,13 @@ impl CommandExecute for Package {
 pub(crate) fn package_extension(
     user_manifest_path: Option<impl AsRef<Path>>,
     user_package: Option<&String>,
-    package_manifest_path: impl AsRef<Path>,
+    package_manifest_path: &Path,
     pg_config: &PgConfig,
     out_dir: PathBuf,
     profile: &CargoProfile,
     is_test: bool,
     features: &clap_cargo::Features,
+    target: Option<&str>,
 ) -> eyre::Result<Vec<PathBuf>> {
     let out_dir_exists = out_dir.try_exists().wrap_err_with(|| {
         format!("failed to access {} while packaging extension", out_dir.display())
@@ -140,12 +149,13 @@ pub(crate) fn package_extension(
     install_extension(
         user_manifest_path,
         user_package,
-        &package_manifest_path,
+        package_manifest_path,
         pg_config,
         profile,
         is_test,
         Some(out_dir),
         features,
+        target,
     )
 }
 
@@ -153,11 +163,15 @@ pub(crate) fn build_base_path(
     pg_config: &PgConfig,
     manifest_path: impl AsRef<Path>,
     profile: &CargoProfile,
+    target: Option<&str>,
 ) -> eyre::Result<PathBuf> {
     let mut target_dir = get_target_dir()?;
     let pgver = pg_config.major_version()?;
     let extname = get_property(manifest_path, "extname")?
         .ok_or(eyre!("could not determine extension name"))?;
+    if let Some(target) = target {
+        target_dir.push(target);
+    }
     target_dir.push(profile.target_subdir());
     target_dir.push(format!("{extname}-pg{pgver}"));
     Ok(target_dir)

@@ -24,7 +24,7 @@ use std::process::{Command, Output};
 use std::rc::Rc;
 use syn::{Item, ItemConst};
 
-const BLOCKLISTED_TYPES: [&str; 3] = ["Datum", "NullableDatum", "Oid"];
+const BLOCKLISTED_TYPES: [&str; 4] = ["Datum", "NullableDatum", "Oid", "TransactionId"];
 
 // These postgres versions were effectively "yanked" by the community, even tho they still exist
 // in the wild.  pgrx will refuse to compile against them
@@ -37,7 +37,6 @@ const YANKED_POSTGRES_VERSIONS: &[PgVersion] = &[
     PgVersion::new(15, PgMinorVersion::Release(9), None),
     PgVersion::new(14, PgMinorVersion::Release(14), None),
     PgVersion::new(13, PgMinorVersion::Release(17), None),
-    PgVersion::new(12, PgMinorVersion::Release(21), None),
 ];
 
 pub(super) mod clang;
@@ -126,15 +125,15 @@ impl bindgen::callbacks::ParseCallbacks for BindingOverride {
     ) -> Option<bindgen::callbacks::EnumVariantCustomBehavior> {
         enum_name.inspect(|name| match name.strip_prefix("enum").unwrap_or(name).trim() {
             // specifically overridden enum
-            "NodeTag" => return,
-            name if name.contains("unnamed at") || name.contains("anonymous at") => return,
+            "NodeTag" => (),
+            name if name.contains("unnamed at") || name.contains("anonymous at") => (),
             // to prevent problems with BuiltinOid
-            _ if variant_name.contains("OID") => return,
+            _ if variant_name.contains("OID") => (),
             name => self
                 .enum_names
                 .borrow_mut()
                 .entry(name.to_string())
-                .or_insert(Vec::new())
+                .or_default()
                 .push((variant_name.to_string(), variant_value)),
         });
         None
@@ -349,7 +348,7 @@ fn generate_bindings(
             &bindings_file,
             quote! {
                 use crate as pg_sys;
-                use crate::{Datum, Oid, PgNode};
+                use crate::{Datum, MultiXactId, Oid, PgNode, TransactionId};
             },
             is_for_release,
         )
@@ -865,6 +864,8 @@ pub const {module}_{variant}: {ty} = {value};"#,
 fn add_blocklists(bind: bindgen::Builder) -> bindgen::Builder {
     bind.blocklist_type("Datum") // manually wrapping datum for correctness
         .blocklist_type("Oid") // "Oid" is not just any u32
+        .blocklist_type("TransactionId") // "TransactionId" is not just any u32
+        .blocklist_type("MultiXactId") // it's an alias of "TransactionId"
         .blocklist_var("CONFIGURE_ARGS") // configuration during build is hopefully irrelevant
         .blocklist_var("_*(?:HAVE|have)_.*") // header tracking metadata
         .blocklist_var("_[A-Z_]+_H") // more header metadata
@@ -1020,7 +1021,7 @@ fn build_shim(
         build.flag("/Gw");
     }
     for pg_target_include in pg_target_includes(major_version, pg_config)?.iter() {
-        build.flag(&format!("-I{pg_target_include}"));
+        build.flag(format!("-I{pg_target_include}"));
     }
     for flag in extra_bindgen_clang_args(pg_config)? {
         build.flag(&flag);
@@ -1202,7 +1203,7 @@ fn rust_fmt(path: &Path) -> eyre::Result<()> {
     // in case we probably should respect RUSTFMT.
     let rustfmt = env_tracked("RUSTFMT").unwrap_or_else(|| "rustfmt".into());
     let mut command = Command::new(rustfmt);
-    command.arg(path).args(&["--edition", "2021"]).current_dir(".");
+    command.arg(path).args(["--edition", "2021"]).current_dir(".");
 
     let out = run_command(&mut command, "[bindings_diff]");
     match out {

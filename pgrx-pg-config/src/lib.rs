@@ -732,7 +732,6 @@ impl Pgrx {
 #[allow(non_snake_case)]
 pub fn SUPPORTED_VERSIONS() -> Vec<PgVersion> {
     vec![
-        PgVersion::new(12, PgMinorVersion::Latest, None),
         PgVersion::new(13, PgMinorVersion::Latest, None),
         PgVersion::new(14, PgMinorVersion::Latest, None),
         PgVersion::new(15, PgMinorVersion::Latest, None),
