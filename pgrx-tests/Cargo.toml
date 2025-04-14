@@ -43,6 +43,7 @@ no-schema-generation = [
     "pgrx-macros/no-schema-generation",
 ]
 nightly = ["pgrx/nightly"]
+xid8 = ["pgrx/xid8"]
 
 [package.metadata.docs.rs]
 features = ["pg14", "proptest"]
