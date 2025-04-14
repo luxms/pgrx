@@ -14,24 +14,30 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 pub type MultiXactId = TransactionId;
 
+#[cfg(feature = "xid8")]
+type InternalTransactionId = u64;
+
+#[cfg(not(feature = "xid8"))]
+type InternalTransactionId = u32;
+
 /// An `xid` type from PostgreSQL
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(serde::Deserialize, serde::Serialize)]
-pub struct TransactionId(u32);
+pub struct TransactionId(InternalTransactionId);
 
 impl TransactionId {
     pub const INVALID: Self = Self(0);
     pub const BOOTSTRAP: Self = Self(1);
     pub const FROZEN: Self = Self(2);
     pub const FIRST_NORMAL: Self = Self(3);
-    pub const MAX: Self = Self(u32::MAX);
+    pub const MAX: Self = Self(InternalTransactionId::MAX);
 
-    pub const fn from_inner(xid: u32) -> Self {
+    pub const fn from_inner(xid: InternalTransactionId) -> Self {
         Self(xid)
     }
 
-    pub const fn into_inner(self) -> u32 {
+    pub const fn into_inner(self) -> InternalTransactionId {
         self.0
     }
 }
@@ -42,14 +48,14 @@ impl Default for TransactionId {
     }
 }
 
-impl From<u32> for TransactionId {
+impl From<InternalTransactionId> for TransactionId {
     #[inline]
-    fn from(xid: u32) -> Self {
+    fn from(xid: InternalTransactionId) -> Self {
         Self::from_inner(xid)
     }
 }
 
-impl From<TransactionId> for u32 {
+impl From<TransactionId> for InternalTransactionId {
     #[inline]
     fn from(xid: TransactionId) -> Self {
         xid.into_inner()
