@@ -10,7 +10,7 @@
 
 [package]
 name = "pgrx-tests"
-version = "0.14.1"
+version = "0.14.3"
 authors = ["PgCentral Foundation, Inc. <contact@pgcentral.org>"]
 license = "MIT"
 description = "Test framework for 'pgrx'-based Postgres extensions"
@@ -35,6 +35,7 @@ pg14 = ["pgrx/pg14"]
 pg15 = ["pgrx/pg15"]
 pg16 = ["pgrx/pg16"]
 pg17 = ["pgrx/pg17"]
+pg18 = ["pgrx/pg18"]
 pg_test = []
 proptest = ["dep:proptest"]
 cshim = ["pgrx/cshim"]
@@ -77,7 +78,7 @@ rand = "0.9.0"
 [dependencies.pgrx] # Not unified in workspace due to default-features key
 path = "../pgrx"
 default-features = false
-version = "=0.14.1"
+version = "=0.14.3"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3.9", features = [

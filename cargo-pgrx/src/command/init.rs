@@ -61,6 +61,9 @@ pub(crate) struct Init {
     /// If installed locally, the path to PG17's `pgconfig` tool, or `download` to have pgrx download/compile/install it
     #[clap(env = "PG17_PG_CONFIG", long)]
     pg17: Option<String>,
+    /// If installed locally, the path to PG18's `pgconfig` tool, or `download` to have pgrx download/compile/install it
+    #[clap(env = "PG18_PG_CONFIG", long)]
+    pg18: Option<String>,
     #[clap(from_global, action = ArgAction::Count)]
     verbose: u8,
     #[clap(long, help = "Base port number")]
@@ -126,6 +129,9 @@ impl CommandExecute for Init {
         if let Some(ref version) = self.pg17 {
             versions.insert("pg17", version.clone());
             major_versions.insert("pg17", 17);
+        }
+        if let Some(ref version) = self.pg18 {
+            versions.insert("pg18", version.clone());
         }
 
         if versions.is_empty() {
