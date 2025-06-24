@@ -62,6 +62,14 @@ impl From<TransactionId> for InternalTransactionId {
     }
 }
 
+#[cfg(feature = "xid8")]
+impl From<u32> for TransactionId {
+    #[inline]
+    fn from(xid: u32) -> Self {
+        Self::from_inner(xid as _)
+    }
+}
+
 impl From<TransactionId> for crate::Datum {
     fn from(xid: TransactionId) -> Self {
         xid.into_inner().into()
