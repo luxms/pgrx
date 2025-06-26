@@ -239,12 +239,12 @@ pub fn main() -> eyre::Result<()> {
     // make sure we're not trying to build any of the yanked postgres versions
     for (v, pg_config) in &pg_configs {
         let mut version = pg_config.get_version()?;
-        version.major = *v;
         if YANKED_POSTGRES_VERSIONS.contains(&version) {
             panic!("Postgres v{}{} is incompatible with \
                     other versions in this major series and is not supported by pgrx.  Please upgrade \
                     to the latest version in the v{} series.", version.major, version.minor, version.major);
         }
+        version.major = *v;
     }
 
     std::thread::scope(|scope| {
