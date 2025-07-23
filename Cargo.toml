@@ -19,6 +19,7 @@ members = [
     "pgrx-sql-entity-graph",
     "pgrx-tests",
     "pgrx-bindgen",
+    "tools/version-updater",
 ]
 exclude = [
     # "pgrx-examples/*",
@@ -55,11 +56,11 @@ exclude = [
 cargo-pgrx = { path = "cargo-pgrx" }
 
 [workspace.dependencies]
-pgrx-macros = { path = "./pgrx-macros", version = "=0.14.3" }
-pgrx-pg-sys = { path = "./pgrx-pg-sys", version = "=0.14.3" }
-pgrx-sql-entity-graph = { path = "./pgrx-sql-entity-graph", version = "=0.14.3" }
-pgrx-pg-config = { path = "./pgrx-pg-config", version = "=0.14.3" }
-pgrx-bindgen = { path = "./pgrx-bindgen", version = "=0.14.3" }
+pgrx-macros = { path = "./pgrx-macros", version = "=0.15.0" }
+pgrx-pg-sys = { path = "./pgrx-pg-sys", version = "=0.15.0" }
+pgrx-sql-entity-graph = { path = "./pgrx-sql-entity-graph", version = "=0.15.0" }
+pgrx-pg-config = { path = "./pgrx-pg-config", version = "=0.15.0" }
+pgrx-bindgen = { path = "./pgrx-bindgen", version = "=0.15.0" }
 
 cargo_metadata = "0.18.0"
 cargo-edit = "=0.13.2" # format-preserving edits to cargo.toml

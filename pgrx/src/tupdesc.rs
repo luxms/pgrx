@@ -142,7 +142,7 @@ impl<'a> PgTupleDesc<'a> {
     }
 
     /// wrap the `pg_sys::TupleDesc` contained by the specified `PgRelation`
-    pub fn from_relation(parent: &PgRelation) -> PgTupleDesc {
+    pub fn from_relation(parent: &PgRelation) -> PgTupleDesc<'_> {
         PgTupleDesc {
             // SAFETY:  `parent` is a Rust reference, and as such its rd_att attribute will be property initialized
             tupdesc: Some(unsafe { PgBox::from_pg(parent.rd_att) }),
@@ -232,7 +232,7 @@ impl<'a> PgTupleDesc<'a> {
     }
 
     /// Iterate over our attributes
-    pub fn iter(&self) -> TupleDescIterator {
+    pub fn iter(&self) -> TupleDescIterator<'_> {
         TupleDescIterator { tupdesc: self, curr: 0 }
     }
 
@@ -243,7 +243,7 @@ impl<'a> PgTupleDesc<'a> {
     }
 }
 
-impl<'a> Deref for PgTupleDesc<'a> {
+impl Deref for PgTupleDesc<'_> {
     type Target = PgBox<pg_sys::TupleDescData>;
 
     fn deref(&self) -> &Self::Target {
@@ -251,7 +251,7 @@ impl<'a> Deref for PgTupleDesc<'a> {
     }
 }
 
-impl<'a> Clone for PgTupleDesc<'a> {
+impl Clone for PgTupleDesc<'_> {
     fn clone(&self) -> Self {
         let tupdesc = self.tupdesc.as_ref().expect("PgTupleDesc.tupdesc was None");
         // SAFETY: We assume the previous tupdesc is valid and
@@ -263,7 +263,7 @@ impl<'a> Clone for PgTupleDesc<'a> {
     }
 }
 
-impl<'a> Drop for PgTupleDesc<'a> {
+impl Drop for PgTupleDesc<'_> {
     fn drop(&mut self) {
         if self.tupdesc.is_some() {
             let tupdesc = self.tupdesc.take().unwrap();
@@ -341,7 +341,7 @@ impl<'a> IntoIterator for PgTupleDesc<'a> {
     }
 }
 
-impl<'a> Iterator for TupleDescDataIntoIterator<'a> {
+impl Iterator for TupleDescDataIntoIterator<'_> {
     type Item = pg_sys::FormData_pg_attribute;
 
     fn next(&mut self) -> Option<Self::Item> {

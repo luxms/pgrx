@@ -12,7 +12,7 @@ use crate::manifest::{get_package_manifest, pg_config_and_version};
 use crate::profile::CargoProfile;
 use crate::CommandExecute;
 use cargo_toml::Manifest;
-use eyre::WrapErr;
+use eyre::{eyre, WrapErr};
 use object::read::macho::MachOFatFile32;
 use owo_colors::OwoColorize;
 use pgrx_pg_config::cargo::PgrxManifestExt;
@@ -103,7 +103,7 @@ impl CommandExecute for Schema {
             &profile,
             self.test,
             &self.features,
-            self.target.as_ref().map(|x| x.as_str()),
+            self.target.as_deref(),
             self.out.as_ref(),
             self.dot,
             log_level,
@@ -215,9 +215,10 @@ pub(crate) fn generate_schema(
         &flags,
         embed.path(),
         &package_name,
+        &manifest,
     )?;
 
-    compute_sql(&package_name, &manifest)?;
+    compute_sql(&manifest)?;
 
     Ok(())
 }
@@ -495,6 +496,7 @@ fn second_build(
     flags: &str,
     embed_path: impl AsRef<Path>,
     package_name: &str,
+    manifest: &Manifest,
 ) -> eyre::Result<()> {
     let mut command = crate::env::cargo();
     command.stdin(Stdio::null());
@@ -505,7 +507,7 @@ fn second_build(
     // The only cargo command respecting our need is `cargo rustc`
     command.arg("rustc");
     command.arg("--bin");
-    command.arg(format!("pgrx_embed_{package_name}"));
+    command.arg(pgrx_embed_name(manifest)?);
 
     command.arg("--package");
     command.arg(package_name);
@@ -563,10 +565,10 @@ fn second_build(
     Ok(())
 }
 
-fn compute_sql(package_name: &str, manifest: &Manifest) -> eyre::Result<()> {
+fn compute_sql(manifest: &Manifest) -> eyre::Result<()> {
     let mut bin = get_target_dir()?;
     bin.push("debug"); // pgrx_embed_ is always compiled in debug mode
-    bin.push(format!("pgrx_embed_{package_name}"));
+    bin.push(pgrx_embed_name(manifest)?);
 
     let mut command = std::process::Command::new(bin);
     command.stdin(Stdio::inherit());
@@ -594,7 +596,26 @@ fn compute_sql(package_name: &str, manifest: &Manifest) -> eyre::Result<()> {
     Ok(())
 }
 
-fn parse_object(data: &[u8]) -> object::Result<object::File> {
+fn pgrx_embed_name(manifest: &Manifest) -> eyre::Result<String> {
+    fn name_from(s: &str) -> String {
+        format!("pgrx_embed_{s}")
+    }
+
+    let package_name = name_from(&manifest.package_name()?);
+    let lib_name = name_from(&manifest.lib_name()?);
+    (&manifest.bin)
+        .into_iter()
+        .find(|bin| {
+            // As cargo_anifest autofills lib.name if it's empty, it's impossible to
+            // check only against one name. Perhaps, cargo-util-schemas can help with that.
+            bin.name.as_ref().is_some_and(|name| name == &package_name || name == &lib_name)
+        })
+        .map(|bin| bin.name.to_owned())
+        .flatten()
+        .ok_or_else(|| eyre!("Failed to find a pgrx_embed binary."))
+}
+
+fn parse_object(data: &[u8]) -> object::Result<object::File<'_>> {
     let kind = object::FileKind::parse(data)?;
 
     match kind {

@@ -1,4 +1,5 @@
 use crate as pg_sys;
+use crate::BLCKSZ;
 use core::mem::offset_of;
 use core::str::FromStr;
 
@@ -479,6 +480,15 @@ pub unsafe fn raw_expression_tree_walker(
     crate::raw_expression_tree_walker_impl(node, walker, context)
 }
 
+#[cfg(feature = "pg18")]
+pub unsafe fn expression_tree_mutator(
+    node: *mut crate::Node,
+    mutator: crate::tree_mutator_callback,
+    context: *mut ::core::ffi::c_void,
+) -> *mut crate::Node {
+    crate::expression_tree_mutator_impl(node, mutator, context)
+}
+
 #[inline(always)]
 pub unsafe fn MemoryContextSwitchTo(context: crate::MemoryContext) -> crate::MemoryContext {
     let old = crate::CurrentMemoryContext;
@@ -511,8 +521,7 @@ pub unsafe fn ItemIdGetOffset(item_id: pg_sys::ItemId) -> u32 {
 
 #[allow(non_snake_case)]
 #[inline(always)]
-#[cfg(any(feature = "pg13", feature = "pg14", feature = "pg15"))]
-pub unsafe fn PageIsValid(page: pg_sys::Page) -> bool {
+pub const unsafe fn PageIsValid(page: pg_sys::Page) -> bool {
     // #define PageIsValid(page) PointerIsValid(page)
     !page.is_null()
 }
@@ -556,7 +565,7 @@ pub unsafe fn PageGetContents(page: pg_sys::Page) -> *mut ::core::ffi::c_char {
     // ((char *) (page) + MAXALIGN(SizeOfPageHeaderData))
     const SizeOfPageHeaderData: pg_sys::Size =
         core::mem::offset_of!(pg_sys::PageHeaderData, pd_linp);
-    page.add(pg_sys::MAXALIGN(SizeOfPageHeaderData) as usize) as *mut ::core::ffi::c_char
+    page.add(pg_sys::MAXALIGN(SizeOfPageHeaderData)) as *mut ::core::ffi::c_char
 }
 
 #[allow(non_snake_case)]
@@ -607,12 +616,54 @@ pub unsafe fn PageGetSpecialSize(page: pg_sys::Page) -> u16 {
     PageGetPageSize(page) as u16 - (*page_header).pd_special
 }
 
+/// line pointer(s) do not count as part of header
+pub const unsafe fn SizeOfPageHeaderData() -> usize {
+    /*
+       #define SizeOfPageHeaderData (offsetof(PageHeaderData, pd_linp))
+    */
+    offset_of!(pg_sys::PageHeaderData, pd_linp)
+}
+
+/// Using assertions, validate that the page special pointer is OK.
+///
+/// This is intended to catch use of the pointer before page initialization.
+/// It is implemented as a function due to the limitations of the MSVC
+/// compiler, which choked on doing all these tests within another macro.  We
+/// return true so that AssertMacro() can be used while still getting the
+/// specifics from the macro failure within this function.
 #[allow(non_snake_case)]
 #[inline(always)]
-#[cfg(any(feature = "pg13", feature = "pg14", feature = "pg15"))]
+pub const unsafe fn PageValidateSpecialPointer(page: pg_sys::Page) -> bool {
+    // static inline bool
+    // PageValidateSpecialPointer(Page page)
+    // {
+    //     Assert(PageIsValid(page));
+    //     Assert(((PageHeader) (page))->pd_special <= BLCKSZ);
+    //     Assert(((PageHeader) (page))->pd_special >= SizeOfPageHeaderData);
+    //
+    //     return true;
+    // }
+    assert!(PageIsValid(page));
+    let page = page as *mut pg_sys::PageHeaderData;
+    assert!((*page).pd_special <= BLCKSZ as _);
+    assert!((*page).pd_special >= SizeOfPageHeaderData() as _);
+    true
+}
+
+#[allow(non_snake_case)]
+#[inline(always)]
+#[cfg(any(feature = "pg13", feature = "pg14", feature = "pg15", feature = "pg18"))]
 pub unsafe fn PageGetSpecialPointer(page: pg_sys::Page) -> *mut ::core::ffi::c_char {
-    // #define PageGetSpecialPointer(page) \
-    // ((char *) ((char *) (page) + ((PageHeader) (page))->pd_special))
+    /*
+    #define PageGetSpecialPointer(page) \
+    ( \
+        PageValidateSpecialPointer(page), \
+        ((page) + ((PageHeader) (page))->pd_special) \
+    )
+    */
+
+    assert!(PageValidateSpecialPointer(page));
+
     let page_header = page as *mut pg_sys::PageHeaderData;
     page.add((*page_header).pd_special as usize) as *mut ::core::ffi::c_char
 }

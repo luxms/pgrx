@@ -407,7 +407,7 @@ fn maybe_make_pgdata<P: AsRef<Path>>(pgdata: P) -> eyre::Result<bool> {
 
         let mut mkdir = sudo_command(&runas);
         mkdir.arg("mkdir").arg("-p").arg(pgdata).stdout(Stdio::piped()).stderr(Stdio::piped());
-        let command_str = format!("{:?}", mkdir);
+        let command_str = format!("{mkdir:?}");
         println!("{} {}", "     Running".bold().green(), command_str);
         let child = mkdir.spawn()?;
         let output = child.wait_with_output()?;
@@ -847,7 +847,7 @@ fn get_extension_name() -> eyre::Result<String> {
     // https://github.com/rust-lang/cargo/issues/45
     let path = PathBuf::from(dir).join("Cargo.toml");
     let name = pgrx_pg_config::cargo::read_manifest(path)?.lib_name()?;
-    Ok(name.replace('-', "_"))
+    Ok(name)
 }
 
 fn get_pgdata_path() -> eyre::Result<PathBuf> {

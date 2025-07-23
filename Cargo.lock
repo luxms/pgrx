@@ -382,7 +382,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-pgrx"
-version = "0.14.3"
+version = "0.15.0"
 dependencies = [
  "bzip2",
  "cargo-edit",
@@ -595,6 +595,15 @@ name = "clap_lex"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
+
+[[package]]
+name = "codepage"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48f68d061bc2828ae826206326e61251aca94c1e4a5305cf52d9138639c918b4"
+dependencies = [
+ "encoding_rs",
+]
 
 [[package]]
 name = "color-eyre"
@@ -854,6 +863,15 @@ name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
+
+[[package]]
+name = "encoding_rs"
+version = "0.8.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
+dependencies = [
+ "cfg-if",
+]
 
 [[package]]
 name = "enum-map"
@@ -1987,7 +2005,7 @@ dependencies = [
 
 [[package]]
 name = "pgrx"
-version = "0.14.3"
+version = "0.15.0"
 dependencies = [
  "atomic-traits",
  "bitflags 2.9.0",
@@ -2009,7 +2027,7 @@ dependencies = [
 
 [[package]]
 name = "pgrx-bindgen"
-version = "0.14.3"
+version = "0.15.0"
 dependencies = [
  "bindgen",
  "cc",
@@ -2026,7 +2044,7 @@ dependencies = [
 
 [[package]]
 name = "pgrx-macros"
-version = "0.14.3"
+version = "0.15.0"
 dependencies = [
  "pgrx-sql-entity-graph",
  "proc-macro2",
@@ -2037,9 +2055,11 @@ dependencies = [
 
 [[package]]
 name = "pgrx-pg-config"
-version = "0.14.3"
+version = "0.15.0"
 dependencies = [
  "cargo_toml",
+ "codepage",
+ "encoding_rs",
  "eyre",
  "home",
  "owo-colors 4.2.0",
@@ -2049,11 +2069,12 @@ dependencies = [
  "thiserror 2.0.12",
  "toml",
  "url",
+ "winapi",
 ]
 
 [[package]]
 name = "pgrx-pg-sys"
-version = "0.14.3"
+version = "0.15.0"
 dependencies = [
  "cee-scape",
  "libc",
@@ -2066,7 +2087,7 @@ dependencies = [
 
 [[package]]
 name = "pgrx-sql-entity-graph"
-version = "0.14.3"
+version = "0.15.0"
 dependencies = [
  "convert_case",
  "eyre",
@@ -2082,7 +2103,7 @@ dependencies = [
 
 [[package]]
 name = "pgrx-tests"
-version = "0.14.3"
+version = "0.15.0"
 dependencies = [
  "clap-cargo 0.14.1",
  "eyre",
@@ -2104,6 +2125,19 @@ dependencies = [
  "thiserror 2.0.12",
  "trybuild",
  "winapi",
+]
+
+[[package]]
+name = "pgrx-version-updater"
+version = "0.1.1"
+dependencies = [
+ "cargo_toml",
+ "clap",
+ "owo-colors 4.2.0",
+ "rustc-hash",
+ "toml",
+ "toml_edit",
+ "walkdir",
 ]
 
 [[package]]
@@ -2633,7 +2667,7 @@ dependencies = [
  "security-framework 3.2.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

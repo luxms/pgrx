@@ -17,7 +17,7 @@ use pgrx_pg_config::{createdb, dropdb, PgConfig};
 use std::collections::HashSet;
 use std::env::temp_dir;
 use std::fs::{DirEntry, File};
-use std::io::{IsTerminal, Write};
+use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 
@@ -167,8 +167,7 @@ impl Regress {
         };
 
         // remove the "setup" file from the list
-        let setup_entry =
-            files.iter().position(|entry| is_setup(entry)).map(|idx| files.remove(idx));
+        let setup_entry = files.iter().position(is_setup).map(|idx| files.remove(idx));
 
         // not all filesystems list directories sorted and we want some kind of guaranteed evaluation order
         files.sort_unstable_by_key(|entry| entry.file_name());
@@ -229,7 +228,7 @@ impl Regress {
         }
 
         let expected_path = manifest_path_to_expected_tests_output_path(manifest_path)
-            .join(&format!("{test_name}{}.out", variant_suffix.unwrap_or_default()));
+            .join(format!("{test_name}{}.out", variant_suffix.unwrap_or_default()));
 
         if expected_path.exists() {
             println!(
@@ -265,7 +264,7 @@ impl Regress {
         include_setup: bool,
         auto: bool,
     ) -> eyre::Result<()> {
-        let output_names = output_files.iter().map(|e| make_test_name(*e)).collect::<HashSet<_>>();
+        let output_names = output_files.iter().map(|e| make_test_name(e)).collect::<HashSet<_>>();
 
         // look for new tests (tests without a corresponding output file)
         let new_tests = test_files
@@ -284,10 +283,10 @@ impl Regress {
             );
             for new_test in new_tests {
                 if let Some(test_result_output) = create_regress_output(
-                    &pg_config,
+                    pg_config,
                     &manifest_path,
                     &pgregress_path,
-                    &dbname,
+                    dbname,
                     new_test,
                 )? {
                     self.accept_new_test(&manifest_path, test_result_output, auto)?;
@@ -425,11 +424,8 @@ fn run_tests(
         .parent()
         .expect("test file should be in a directory named `sql/`")
         .to_path_buf();
-    let (status, output) = pg_regress(pg_config, pg_regress_bin, dbname, &input_dir, test_files)?;
-
-    println!("{output}");
-
-    Ok(status.success())
+    pg_regress(pg_config, pg_regress_bin, dbname, &input_dir, test_files)
+        .map(|status| status.success())
 }
 
 fn create_regress_output(
@@ -439,7 +435,7 @@ fn create_regress_output(
     dbname: &str,
     test_file: &DirEntry,
 ) -> eyre::Result<Option<PathBuf>> {
-    let test_name = make_test_name(&test_file);
+    let test_name = make_test_name(test_file);
     let input_dir = test_file.path();
     let input_dir = input_dir
         .parent()
@@ -447,18 +443,17 @@ fn create_regress_output(
         .parent()
         .expect("test file should be in a directory named `sql/`")
         .to_path_buf();
-    let (status, output) = pg_regress(pg_config, pg_regress_bin, dbname, &input_dir, &[test_file])?;
+    let status = pg_regress(pg_config, pg_regress_bin, dbname, &input_dir, &[test_file])?;
 
     if !status.success() {
         // pg_regress returned with an error code, but that is most likely because the test's output file
         // doesn't exist, since we are creating the test output.  So if that's the case, if we have
         // a `.out` file for it in the results/ directory, then we're successful
         let out_file =
-            manifest_path_to_results_output_path(&manifest_path).join(&format!("{test_name}.out"));
+            manifest_path_to_results_output_path(&manifest_path).join(format!("{test_name}.out"));
         if out_file.exists() {
             return Ok(Some(out_file));
         } else {
-            println!("{output}");
             std::process::exit(status.code().unwrap_or(1));
         }
     }
@@ -472,7 +467,7 @@ fn pg_regress(
     dbname: &str,
     input_dir: impl AsRef<Path>,
     tests: &[&DirEntry],
-) -> eyre::Result<(ExitStatus, String)> {
+) -> eyre::Result<ExitStatus> {
     if tests.is_empty() {
         eyre::bail!("no tests to run");
     }
@@ -493,9 +488,9 @@ fn pg_regress(
         .arg("--port")
         .arg(pg_config.port()?.to_string())
         .arg("--use-existing")
-        .arg(&format!("--dbname={dbname}"))
-        .arg(&format!("--inputdir={}", input_dir.as_ref().display()))
-        .arg(&format!("--outputdir={}", input_dir.as_ref().display()))
+        .arg(format!("--dbname={dbname}"))
+        .arg(format!("--inputdir={}", input_dir.as_ref().display()))
+        .arg(format!("--outputdir={}", input_dir.as_ref().display()))
         .args(tests);
 
     #[cfg(not(target_os = "windows"))]
@@ -506,8 +501,7 @@ fn pg_regress(
             // in order to avoid verbose log output being enshrined in expected test output
             const LAUNCHER_SCRIPT: &[u8] = b"#! /bin/bash\n$* -v VERBOSITY=terse";
 
-            let path = PathBuf::from(temp_dir())
-                .join(&format!("pgrx-pg_regress-runner-{}.sh", std::process::id()));
+            let path = temp_dir().join(format!("pgrx-pg_regress-runner-{}.sh", std::process::id()));
             let mut tmpfile = File::create(&path)?;
             tmpfile.write_all(LAUNCHER_SCRIPT)?;
             let mut perms = path.metadata()?.permissions();
@@ -516,109 +510,122 @@ fn pg_regress(
             Ok(path)
         }
         let launcher_script = make_launcher_script()?;
-        command.arg(&format!("--launcher={}", launcher_script.display()));
+        command.arg(format!("--launcher={}", launcher_script.display()));
         launcher_script
     };
 
     tracing::trace!("running {command:?}");
 
-    let output = command.output()?;
-    let stdout = decorate_output(&String::from_utf8_lossy(&output.stdout));
-    let stderr = decorate_output(&String::from_utf8_lossy(&output.stderr));
+    let mut child = command.spawn()?;
+    let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
+        panic!("unable to take stdout or stderr from pg_regress process");
+    };
 
-    let cmd_output = if !stdout.is_empty() && !stderr.is_empty() {
-        format!("{stdout}\n{stderr}")
-    } else if !stdout.is_empty() {
-        stdout.to_string()
-    } else {
-        stderr.to_string()
-    }
-    .trim()
-    .to_string();
+    let output_monitor = std::thread::spawn(move || {
+        let mut passed_cnt = 0;
+        let mut failed_cnt = 0;
+        let stdout = BufReader::new(stdout);
+        let stderr = BufReader::new(stderr);
+        for line in stdout.lines().chain(stderr.lines()) {
+            let line = line.unwrap();
+            let Some((line, result)) = decorate_output(line) else {
+                continue;
+            };
+
+            match result {
+                Some(TestResult::Passed) => passed_cnt += 1,
+                Some(TestResult::Failed) => failed_cnt += 1,
+                None => (),
+            }
+
+            println!("{line}");
+        }
+        (passed_cnt, failed_cnt)
+    });
+    let status = child.wait()?;
+    let (passed_cnt, failed_cnt) =
+        output_monitor.join().map_err(|_| eyre::eyre!("failed to join output monitor thread"))?;
+    println!("passed={passed_cnt} failed={failed_cnt}");
 
     #[cfg(not(target_os = "windows"))]
     {
         std::fs::remove_file(launcher_script)?;
     }
 
-    Ok((output.status, cmd_output))
+    Ok(status)
 }
 
-fn decorate_output(input: &str) -> String {
-    let mut decorated = String::with_capacity(input.len());
-    let (mut total_passed, mut total_failed) = (0, 0);
-    for line in input.lines() {
-        let mut line = line.to_string();
-        let mut is_old_line = false;
-        let mut is_new_line = false;
+enum TestResult {
+    Passed,
+    Failed,
+}
 
-        if line.starts_with("ok") {
-            // for pg_regress from pg16 forward, rewrite the "ok" into a colored PASS"
-            is_new_line = true;
-        } else if line.starts_with("not ok") {
-            // for pg_regress from pg16 forward, rewrite the "no ok" into a colored FAIL"
-            line = line.replace("not ok", "not_ok"); // to make parsing easier down below
-            is_new_line = true;
-        } else if line.contains("... ok") {
-            is_old_line = true;
-        } else if line.contains("... FAILED") {
-            is_old_line = true;
+fn decorate_output(mut line: String) -> Option<(String, Option<TestResult>)> {
+    let mut decorated = String::with_capacity(line.len());
+    let mut test_result: Option<TestResult> = None;
+    let mut is_old_line = false;
+    let mut is_new_line = false;
+
+    if line.starts_with("ok") {
+        // for pg_regress from pg16 forward, rewrite the "ok" into a colored PASS"
+        is_new_line = true;
+    } else if line.starts_with("not ok") {
+        // for pg_regress from pg16 forward, rewrite the "no ok" into a colored FAIL"
+        line = line.replace("not ok", "not_ok"); // to make parsing easier down below
+        is_new_line = true;
+    } else if line.contains("... ok") || line.contains("... FAILED") {
+        is_old_line = true;
+    }
+
+    let parsed_test_line = if is_new_line {
+        fn split_line(line: &str) -> Option<(&str, bool, &str, &str)> {
+            let mut parts = line.split_whitespace();
+
+            let passed = parts.next()? == "ok";
+            parts.next()?; // throw away the test number
+            parts.next()?; // throw away the dash (-)
+            let test_name = parts.next()?;
+            let execution_time = parts.next()?;
+            let execution_units = parts.next()?;
+            Some((test_name, passed, execution_time, execution_units))
         }
+        split_line(&line)
+    } else if is_old_line {
+        fn split_line(line: &str) -> Option<(&str, bool, &str, &str)> {
+            let mut parts = line.split_whitespace();
 
-        let parsed_test_line = if is_new_line {
-            fn split_line(line: &str) -> Option<(&str, bool, &str, &str)> {
-                let mut parts = line.split_whitespace();
+            parts.next()?; // throw away "test"
+            let test_name = parts.next()?;
+            parts.next()?; // throw away "..."
+            let passed = parts.next()? == "ok";
+            let execution_time = parts.next()?;
+            let execution_units = parts.next()?;
+            Some((test_name, passed, execution_time, execution_units))
+        }
+        split_line(&line)
+    } else {
+        // not a line we care about
+        return None;
+    };
 
-                let passed = parts.next()? == "ok";
-                parts.next()?; // throw away the test number
-                parts.next()?; // throw away the dash (-)
-                let test_name = parts.next()?;
-                let execution_time = parts.next()?;
-                let execution_units = parts.next()?;
-                Some((test_name, passed, execution_time, execution_units))
-            }
-            split_line(&line)
-        } else if is_old_line {
-            fn split_line(line: &str) -> Option<(&str, bool, &str, &str)> {
-                let mut parts = line.split_whitespace();
-
-                parts.next()?; // throw away "test"
-                let test_name = parts.next()?;
-                parts.next()?; // throw away "..."
-                let passed = parts.next()? == "ok";
-                let execution_time = parts.next()?;
-                let execution_units = parts.next()?;
-                Some((test_name, passed, execution_time, execution_units))
-            }
-            split_line(&line)
+    if let Some((test_name, passed, execution_time, execution_units)) = parsed_test_line {
+        if passed {
+            test_result = Some(TestResult::Passed);
         } else {
-            // not a line we care about
-            continue;
-        };
-
-        if let Some((test_name, passed, execution_time, execution_units)) = parsed_test_line {
-            if passed {
-                total_passed += 1
-            } else {
-                total_failed += 1
-            }
-
-            decorated.push_str(&format!(
-                "{} {test_name} {execution_time}{execution_units}\n",
-                if passed {
-                    "PASS".bold().bright_green().to_string()
-                } else {
-                    "FAIL".bold().bright_red().to_string()
-                }
-            ))
+            test_result = Some(TestResult::Failed);
         }
+
+        decorated.push_str(&format!(
+            "{} {test_name} {execution_time}{execution_units}",
+            if passed {
+                "PASS".bold().bright_green().to_string()
+            } else {
+                "FAIL".bold().bright_red().to_string()
+            }
+        ))
     }
 
-    if total_passed + total_failed > 0 {
-        decorated.push_str(&format!("passed={total_passed}, failed={total_failed}\n"))
-    }
-
-    decorated
+    Some((decorated, test_result))
 }
 
 fn make_test_name(entry: &DirEntry) -> String {
@@ -657,10 +664,9 @@ fn manifest_path_to_results_output_path(manifest_path: impl AsRef<Path>) -> Path
 
 fn add_to_git(path: impl AsRef<Path>) -> eyre::Result<()> {
     if let Ok(git) = which::which("git") {
-        if is_git_repo(&git) {
-            if !Command::new(git).arg("add").arg(path.as_ref()).status()?.success() {
-                panic!("unable to add {} to git", path.as_ref().display());
-            }
+        if is_git_repo(&git) && !Command::new(git).arg("add").arg(path.as_ref()).status()?.success()
+        {
+            panic!("unable to add {} to git", path.as_ref().display());
         }
     }
     Ok(())

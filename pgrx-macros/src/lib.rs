@@ -967,7 +967,7 @@ fn impl_postgres_type(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream>
             #[::pgrx::pgrx_macros::pg_extern(immutable,parallel_safe)]
             pub fn #funcname_in #generics(input: Option<&::core::ffi::CStr>) -> Option<#name #generics> {
                 input.map_or_else(|| {
-                    for m in <#name as ::pgrx::inoutfuncs::InOutFuncs>::NULL_ERROR_MESSAGE {
+                    if let Some(m) = <#name as ::pgrx::inoutfuncs::InOutFuncs>::NULL_ERROR_MESSAGE {
                         ::pgrx::pg_sys::error!("{m}");
                     }
                     None
@@ -990,7 +990,7 @@ fn impl_postgres_type(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream>
             #[::pgrx::pgrx_macros::pg_extern(immutable,parallel_safe)]
             pub fn #funcname_in #generics(input: Option<&::core::ffi::CStr>) -> Option<::pgrx::datum::PgVarlena<#name #generics>> {
                 input.map_or_else(|| {
-                    for m in <#name as ::pgrx::inoutfuncs::PgVarlenaInOutFuncs>::NULL_ERROR_MESSAGE {
+                    if let Some(m) = <#name as ::pgrx::inoutfuncs::PgVarlenaInOutFuncs>::NULL_ERROR_MESSAGE {
                         ::pgrx::pg_sys::error!("{m}");
                     }
                     None
@@ -1015,7 +1015,7 @@ fn impl_postgres_type(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream>
             #[doc(hidden)]
             #[::pgrx::pgrx_macros::pg_extern(immutable, strict, parallel_safe)]
             pub fn #funcname_recv #generics(
-                internal: ::pgrx::datum::Internal,
+                mut internal: ::pgrx::datum::Internal,
             ) -> #name #generics {
                 let buf = unsafe { internal.get_mut::<::pgrx::pg_sys::StringInfoData>().unwrap() };
 
@@ -1081,6 +1081,12 @@ fn impl_guc_enum(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         Hidden(bool),
     }
 
+    impl GucEnumAttribute {
+        fn is_guc_enum_attribute(attribute: &str) -> bool {
+            matches!(attribute, "name" | "hidden")
+        }
+    }
+
     impl Parse for GucEnumAttribute {
         fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
             let ident: Ident = input.parse()?;
@@ -1110,17 +1116,26 @@ fn impl_guc_enum(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         let mut name = None;
         let mut hidden = None;
         for attr in variant.attrs.iter() {
-            let tokens = attr.meta.require_name_value()?.to_token_stream();
-            let pair: GucEnumAttribute = syn::parse2(tokens)?;
-            match pair {
-                GucEnumAttribute::Name(value) => {
-                    if name.replace(value).is_some() {
-                        return Err(syn::Error::new(ast.span(), "too many #[name] attributes"));
-                    }
-                }
-                GucEnumAttribute::Hidden(value) => {
-                    if hidden.replace(value).is_some() {
-                        return Err(syn::Error::new(ast.span(), "too many #[hidden] attributes"));
+            if let Some(ident) = attr.path().get_ident() {
+                if GucEnumAttribute::is_guc_enum_attribute(&ident.to_string()) {
+                    let pair: GucEnumAttribute = syn::parse2(attr.meta.to_token_stream())?;
+                    match pair {
+                        GucEnumAttribute::Name(value) => {
+                            if name.replace(value).is_some() {
+                                return Err(syn::Error::new(
+                                    ast.span(),
+                                    "too many #[name] attributes",
+                                ));
+                            }
+                        }
+                        GucEnumAttribute::Hidden(value) => {
+                            if hidden.replace(value).is_some() {
+                                return Err(syn::Error::new(
+                                    ast.span(),
+                                    "too many #[hidden] attributes",
+                                ));
+                            }
+                        }
                     }
                 }
             }
@@ -1288,6 +1303,51 @@ PostgresHash cannot be used in trait bounds, nor can it be manually implemented.
 pub fn derive_postgres_hash(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as syn::DeriveInput);
     deriving_postgres_hash(ast).unwrap_or_else(syn::Error::into_compile_error).into()
+}
+
+/// Derives the `ToAggregateName` trait.
+#[proc_macro_derive(AggregateName, attributes(aggregate_name))]
+pub fn derive_aggregate_name(input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as syn::DeriveInput);
+
+    impl_aggregate_name(ast).unwrap_or_else(|e| e.into_compile_error()).into()
+}
+
+fn impl_aggregate_name(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+    let name = &ast.ident;
+
+    let mut custom_name_value: Option<String> = None;
+
+    for attr in &ast.attrs {
+        if attr.path().is_ident("aggregate_name") {
+            let meta = &attr.meta;
+            match meta {
+                syn::Meta::NameValue(syn::MetaNameValue {
+                    value: syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }),
+                    ..
+                }) => {
+                    custom_name_value = Some(s.value());
+                    break;
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                            attr,
+                            "#[aggregate_name] must be in the form `#[aggregate_name = \"string_literal\"]`",
+                        ));
+                }
+            }
+        }
+    }
+
+    let name_str = custom_name_value.unwrap_or(name.to_string());
+
+    let expanded = quote! {
+        impl ::pgrx::aggregate::ToAggregateName for #name {
+            const NAME: &'static str = #name_str;
+        }
+    };
+
+    Ok(expanded)
 }
 
 /**
