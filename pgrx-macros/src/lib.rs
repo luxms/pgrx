@@ -1073,7 +1073,6 @@ pub fn postgres_guc_enum(input: TokenStream) -> TokenStream {
 }
 
 fn impl_guc_enum(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
-    use std::str::FromStr;
     use syn::parse::Parse;
 
     enum GucEnumAttribute {
@@ -1109,7 +1108,7 @@ fn impl_guc_enum(ast: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let ident = ast.ident.clone();
     let mut config = Vec::new();
     for (index, variant) in data.variants.iter().enumerate() {
-        let default_name = CString::from_str(&variant.ident.to_string())
+        let default_name = CString::new(variant.ident.to_string())
             .expect("the identifier contains a null character.");
         let default_val = index as i32;
         let default_hidden = false;
