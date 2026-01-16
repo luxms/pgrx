@@ -521,7 +521,7 @@ pub unsafe fn ItemIdGetOffset(item_id: pg_sys::ItemId) -> u32 {
 
 #[allow(non_snake_case)]
 #[inline(always)]
-pub const unsafe fn PageIsValid(page: pg_sys::Page) -> bool {
+pub unsafe fn PageIsValid(page: pg_sys::Page) -> bool {
     // #define PageIsValid(page) PointerIsValid(page)
     !page.is_null()
 }
@@ -633,7 +633,7 @@ pub const unsafe fn SizeOfPageHeaderData() -> usize {
 /// specifics from the macro failure within this function.
 #[allow(non_snake_case)]
 #[inline(always)]
-pub const unsafe fn PageValidateSpecialPointer(page: pg_sys::Page) -> bool {
+pub unsafe fn PageValidateSpecialPointer(page: pg_sys::Page) -> bool {
     // static inline bool
     // PageValidateSpecialPointer(Page page)
     // {
